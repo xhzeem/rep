@@ -4,6 +4,17 @@ import { elements } from './ui.js';
 import { generateAttackRequests } from './attack-engine.js';
 import { formatBytes, highlightHTTP, renderDiff } from './utils.js';
 
+// Persist latest bulk results and baseline for export
+let latestBulkResults = [];
+let latestBaselineBodySize = null;
+
+function beautifyHeaderName(name) {
+    return (name || '')
+        .split('-')
+        .map(part => part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part)
+        .join('-');
+}
+
 export function setupBulkReplay() {
     const bulkReplayBtn = document.getElementById('bulk-replay-btn');
     const bulkConfigModal = document.getElementById('bulk-config-modal');
@@ -15,6 +26,7 @@ export function setupBulkReplay() {
     const bulkProgressText = document.getElementById('bulk-progress-text');
     const bulkStopBtn = document.getElementById('bulk-stop-btn');
     const bulkCloseBtn = document.getElementById('bulk-close-btn');
+    const bulkExportBtn = document.getElementById('bulk-export-btn');
     const verticalResizeHandle = document.querySelector('.vertical-resize-handle');
 
     // We use elements.rawRequestInput from ui.js
@@ -78,7 +90,7 @@ export function setupBulkReplay() {
             document.getElementById('attack-type').value = 'sniper';
             updateAttackTypeUI('sniper');
 
-            bulkConfigModal.style.display = 'block';
+            bulkConfigModal.showPopover();
         });
     }
 
@@ -97,7 +109,7 @@ export function setupBulkReplay() {
                     <span class="position-value">${cleanValue.substring(0, 30)}${cleanValue.length > 30 ? '...' : ''}</span>
                 </div>
                 <div class="form-group">
-                    <label>Payload Type</label>
+                    <!-- <label>Payload Type</label> -->
                     <select class="payload-type-select form-control" data-index="${index}">
                         <option value="simple-list">Simple List</option>
                         <option value="numbers">Numbers</option>
@@ -176,13 +188,13 @@ export function setupBulkReplay() {
 
     if (closeModalBtn) {
         closeModalBtn.addEventListener('click', () => {
-            bulkConfigModal.style.display = 'none';
+            bulkConfigModal.hidePopover();
         });
     }
 
     window.addEventListener('click', (e) => {
         if (e.target === bulkConfigModal) {
-            bulkConfigModal.style.display = 'none';
+            bulkConfigModal.hidePopover();
         }
     });
 
@@ -237,6 +249,127 @@ export function setupBulkReplay() {
             bulkReplayPane.style.display = 'none';
             verticalResizeHandle.style.display = 'none';
             state.shouldStopBulk = true;
+        });
+    }
+
+    // Export Bulk Results (JSON with full requests and responses)
+    if (bulkExportBtn) {
+        bulkExportBtn.addEventListener('click', () => {
+            if (!latestBulkResults || latestBulkResults.length === 0) {
+                alert('No bulk results to export.');
+                return;
+            }
+
+            const results = latestBulkResults
+                .map((r, idx) => {
+                    if (!r) return null;
+                    const status = r.statusText ? `${r.status} ${r.statusText}` : r.status;
+                    return {
+                        id: idx + 1,
+                        payloads: Array.isArray(r.payloads) ? r.payloads : [],
+                        request: r.requestContent || '',
+                        response: r.rawResponse || buildRawResponse(r),
+                        status: r.status,
+                        statusText: r.statusText,
+                        size: r.size,
+                        sizeDiff: r.sizeDiff,
+                        duration: r.duration,
+                        error: r.error || null
+                    };
+                })
+                .filter(Boolean);
+
+            const exportObj = {
+                version: '1.0',
+                exported_at: new Date().toISOString(),
+                baseline_body_size: latestBaselineBodySize,
+                count: results.length,
+                results
+            };
+
+            const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[:T]/g, '-').split('.')[0];
+            a.href = url;
+            a.download = `bulk_results_${ts}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    function buildRawResponse(r) {
+        try {
+            if (r.error) {
+                return `Error: ${r.error}`;
+            }
+            let raw = `HTTP/1.1 ${r.status} ${r.statusText}\n`;
+            if (r.headers && typeof r.headers.forEach === 'function') {
+                r.headers.forEach((val, key) => {
+                    raw += `${key}: ${val}\n`;
+                });
+            }
+            raw += `\n`;
+            raw += r.responseBody || '';
+            return raw;
+        } catch (e) {
+            return r.responseBody || '';
+        }
+    }
+
+    // Simple sorting for bulk results table
+    const resultsTableEl = document.getElementById('bulk-results-table');
+    if (resultsTableEl) {
+        const thead = resultsTableEl.querySelector('thead');
+        const tbody = resultsTableEl.querySelector('tbody');
+        const headers = thead ? Array.from(thead.querySelectorAll('th')) : [];
+
+        const getCellVal = (row, idx) => (row.children[idx]?.textContent || '').trim();
+        const parseNumeric = (text) => {
+            if (!text) return 0;
+            const n = parseInt(text.replace(/[^-\d]/g, ''), 10);
+            return isNaN(n) ? 0 : n;
+        };
+        const cmp = (a, b, idx, dir) => {
+            let va, vb;
+            // Column mapping: 0=ID(n), 1=Payload(s), 2=Status(n?fallback s), 3=Size(n), 4=Diff(n), 5=Time(n)
+            if (idx === 0 || idx === 3 || idx === 4 || idx === 5) {
+                va = parseNumeric(getCellVal(a, idx));
+                vb = parseNumeric(getCellVal(b, idx));
+            } else if (idx === 2) {
+                const sa = getCellVal(a, idx);
+                const sb = getCellVal(b, idx);
+                const ma = sa.match(/^-?\d+/);
+                const mb = sb.match(/^-?\d+/);
+                if (ma && mb) {
+                    va = parseInt(ma[0], 10);
+                    vb = parseInt(mb[0], 10);
+                } else {
+                    // Fallback to string compare if no numeric status
+                    return dir * sa.localeCompare(sb);
+                }
+            } else {
+                va = getCellVal(a, idx).toLowerCase();
+                vb = getCellVal(b, idx).toLowerCase();
+                return dir * va.localeCompare(vb);
+            }
+            return dir * (va - vb);
+        };
+
+        headers.forEach((th, idx) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                const dir = th.dataset.sortDir === 'asc' ? -1 : 1; // toggle
+                // Clear arrows on other headers
+                headers.forEach(h => { if (h !== th) h.removeAttribute('data-sort-dir'); });
+                // Set arrow on this header
+                th.dataset.sortDir = dir === 1 ? 'asc' : 'desc';
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => cmp(a, b, idx, dir));
+                rows.forEach(r => tbody.appendChild(r));
+            });
         });
     }
 
@@ -338,12 +471,21 @@ export function setupBulkReplay() {
             }
         }
 
-        bulkConfigModal.style.display = 'none';
+        bulkConfigModal.hidePopover();
 
         let baselineResponse = elements.rawResponseDisplay.textContent || '';
         if (baselineResponse.trim()) {
             elements.diffToggle.style.display = 'flex';
         }
+
+        // Compute baseline body size (bytes) for size diff column
+        let baselineBodySize = null;
+        if (baselineResponse.trim()) {
+            const sepIdx = baselineResponse.indexOf('\n\n');
+            const baseBody = sepIdx !== -1 ? baselineResponse.substring(sepIdx + 2) : '';
+            baselineBodySize = new TextEncoder().encode(baseBody).length;
+        }
+        latestBaselineBodySize = baselineBodySize;
 
         bulkReplayPane.style.display = 'flex';
         verticalResizeHandle.style.display = 'block';
@@ -362,6 +504,7 @@ export function setupBulkReplay() {
         }
 
         const bulkResults = [];
+        latestBulkResults = bulkResults;
         const useHttps = document.getElementById('use-https').checked;
         const scheme = useHttps ? 'https' : 'http';
 
@@ -387,6 +530,7 @@ export function setupBulkReplay() {
                 <td>${attackRequests[i].payloads.join(', ')}</td>
                 <td class="status-cell">Sending...</td>
                 <td class="size-cell">-</td>
+                <td class="diff-cell">-</td>
                 <td class="time-cell">-</td>
             `;
             bulkResultsTable.appendChild(row);
@@ -398,7 +542,7 @@ export function setupBulkReplay() {
 
                 const result = bulkResults[i];
                 if (result) {
-                    elements.rawRequestInput.innerText = result.requestContent;
+                    elements.rawRequestInput.innerHTML = highlightHTTP(result.requestContent);
 
                     elements.resStatus.textContent = result.statusText ? `${result.status} ${result.statusText}` : result.status;
                     elements.resStatus.className = 'status-badge';
@@ -407,7 +551,7 @@ export function setupBulkReplay() {
                     else if (result.status >= 500) elements.resStatus.classList.add('status-5xx');
 
                     elements.resTime.textContent = result.duration;
-                    elements.resSize.textContent = formatBytes(result.size);
+                    elements.resSize.textContent = `${result.size} B`;
 
                     if (result.error) {
                         elements.rawResponseDisplay.textContent = result.error;
@@ -415,7 +559,8 @@ export function setupBulkReplay() {
                         let rawResponse = `HTTP/1.1 ${result.status} ${result.statusText}\n`;
                         if (result.headers) {
                             result.headers.forEach((val, key) => {
-                                rawResponse += `${key}: ${val}\n`;
+                                const niceKey = beautifyHeaderName(key);
+                                rawResponse += `${niceKey}: ${val}\n`;
                             });
                         }
                         rawResponse += '\n';
@@ -504,7 +649,19 @@ export function setupBulkReplay() {
                 const endTime = performance.now();
                 const responseBody = await response.text();
                 const responseSize = new TextEncoder().encode(responseBody).length;
+                const sizeDiff = (baselineBodySize !== null && baselineBodySize !== undefined)
+                    ? (responseSize - baselineBodySize)
+                    : null;
                 const duration = `${(endTime - startTime).toFixed(0)}ms`;
+
+                // Build raw response for export
+                let rawResponse = `HTTP/1.1 ${response.status} ${response.statusText}\n`;
+                response.headers && response.headers.forEach && response.headers.forEach((val, key) => {
+                    const niceKey = beautifyHeaderName(key);
+                    rawResponse += `${niceKey}: ${val}\n`;
+                });
+                rawResponse += `\n`;
+                rawResponse += responseBody;
 
                 bulkResults[i] = {
                     requestContent: requestContent,
@@ -513,18 +670,28 @@ export function setupBulkReplay() {
                     headers: response.headers,
                     responseBody: responseBody,
                     size: responseSize,
+                    sizeDiff: sizeDiff,
                     duration: duration,
-                    error: null
+                    error: null,
+                    rawResponse: rawResponse,
+                    payloads: attackRequests[i].payloads
                 };
 
                 row.querySelector('.status-cell').textContent = `${response.status} ${response.statusText}`;
-                row.querySelector('.size-cell').textContent = formatBytes(responseSize);
+                row.querySelector('.size-cell').textContent = `${responseSize} B`;
+                const diffCell = row.querySelector('.diff-cell');
+                if (sizeDiff === null || sizeDiff === undefined) {
+                    diffCell.textContent = '-';
+                } else {
+                    diffCell.textContent = `${sizeDiff >= 0 ? '+' : ''}${sizeDiff} B`;
+                }
                 row.querySelector('.time-cell').textContent = duration;
 
             } catch (error) {
                 const endTime = performance.now();
                 console.error(error);
 
+                const errSizeDiff = (baselineBodySize !== null && baselineBodySize !== undefined) ? (0 - baselineBodySize) : null;
                 bulkResults[i] = {
                     requestContent: requestContent,
                     status: 'Error',
@@ -532,12 +699,19 @@ export function setupBulkReplay() {
                     headers: null,
                     responseBody: '',
                     size: 0,
+                    sizeDiff: errSizeDiff,
                     duration: `${(endTime - startTime).toFixed(0)}ms`,
-                    error: error.message
+                    error: error.message,
+                    rawResponse: `Error: ${error.message}`,
+                    payloads: attackRequests[i].payloads
                 };
 
                 row.querySelector('.status-cell').textContent = 'Error';
                 row.querySelector('.status-cell').title = error.message;
+                const diffCellErr = row.querySelector('.diff-cell');
+                diffCellErr.textContent = (errSizeDiff === null || errSizeDiff === undefined)
+                    ? '-'
+                    : `${errSizeDiff >= 0 ? '+' : ''}${errSizeDiff} B`;
             }
 
             completed++;

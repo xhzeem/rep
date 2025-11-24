@@ -154,22 +154,17 @@ export function highlightHTTP(text) {
             if (firstSpace > -1) {
                 const method = line.substring(0, firstSpace);
                 const rest = line.substring(firstSpace + 1);
-
                 highlighted += `<span class="http-method">${escapeHtml(method)}</span> `;
-
                 let path = rest;
                 let version = '';
-
                 // Match version at end: (space)? (HTTP/x.x | hx | QUIC)
                 // Handles attached HTTP/x.x (e.g. pathHTTP/1.1) and space-separated short versions (e.g. path h3)
                 const versionRegex = /(\s*HTTP\/\d+(\.\d+)?|\s+([hH]\d+|QUIC))$/i;
                 const match = rest.match(versionRegex);
-
                 if (match) {
                     path = rest.substring(0, match.index);
                     version = rest.substring(match.index);
                 }
-
                 const qIndex = path.indexOf('?');
                 if (qIndex > -1) {
                     highlighted += `<span class="http-path">${escapeHtml(path.substring(0, qIndex))}</span>?`;
@@ -177,7 +172,6 @@ export function highlightHTTP(text) {
                 } else {
                     highlighted += `<span class="http-path">${escapeHtml(path)}</span>`;
                 }
-
                 if (version) {
                     highlighted += `<span class="http-version">${escapeHtml(version)}</span>`;
                 }
@@ -192,7 +186,6 @@ export function highlightHTTP(text) {
                 const headerValue = line.substring(colonIndex + 1);
                 highlighted += `<span class="http-header-name">${escapeHtml(headerName)}</span>`;
                 highlighted += '<span class="http-colon">:</span>';
-
                 if (headerName.trim().toLowerCase() === 'cookie') {
                     highlighted += highlightCookies(headerValue);
                 } else {
@@ -208,7 +201,6 @@ export function highlightHTTP(text) {
             // Body - try to detect and highlight JSON or Params
             const bodyContent = lines.slice(bodyStartIndex + 1).join('\n');
             let bodyHighlighted = highlightJSON(bodyContent);
-
             // Only highlight params if NOT a response (so it's a request) AND not JSON
             if (!isResponse && bodyHighlighted === escapeHtml(bodyContent)) {
                 bodyHighlighted = highlightParams(bodyContent);
@@ -258,9 +250,7 @@ function highlightJSON(text) {
 function highlightParams(text) {
     // Avoid highlighting HTML/XML as params
     if (text.trim().startsWith('<')) return escapeHtml(text);
-
     if (text.indexOf('=') === -1) return escapeHtml(text);
-
     return text.split('&').map(part => {
         const eqIndex = part.indexOf('=');
         if (eqIndex > -1) {
@@ -292,7 +282,7 @@ export function renderDiff(baseline, current) {
     }
 
     const diff = Diff.diffLines(baseline, current);
-    let html = '<pre style="margin: 0; padding: 10px; font-family: monospace; font-size: 12px; line-height: 1.5;">';
+    let html = '<pre style="margin: 0; font-family: monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; overflow-wrap: break-word;">';
 
     diff.forEach(part => {
         const lines = part.value.split('\n');

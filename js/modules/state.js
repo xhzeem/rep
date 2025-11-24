@@ -1,4 +1,6 @@
 // State Management
+import { updateHistoryCounter } from '../main.js';
+import { updateHistoryButtons } from './ui.js';
 
 export const state = {
     requests: [],
@@ -34,11 +36,19 @@ export function clearRequests() {
     state.currentResponse = null;
 }
 
-export function addToHistory(rawText, useHttps) {
-    // Don't add if same as current
+export function addToHistory(rawText, useHttps, response = null) {
+    // Only prevent adding if we have a duplicate entry with the same content and no response
+    // This allows us to add new responses to the same request
     if (state.historyIndex >= 0) {
         const current = state.requestHistory[state.historyIndex];
-        if (current.rawText === rawText && current.useHttps === useHttps) {
+        if (current.rawText === rawText && 
+            current.useHttps === useHttps && 
+            current.response && 
+            (!response || current.response === response)) {
+            // Still update the counter even if we don't add to history
+            if (typeof updateHistoryCounter === 'function') {
+                updateHistoryCounter();
+            }
             return;
         }
     }
@@ -48,6 +58,21 @@ export function addToHistory(rawText, useHttps) {
         state.requestHistory = state.requestHistory.slice(0, state.historyIndex + 1);
     }
 
-    state.requestHistory.push({ rawText, useHttps });
+    const historyEntry = { rawText, useHttps };
+    if (response) {
+        historyEntry.response = response;
+    }
+    
+    state.requestHistory.push(historyEntry);
     state.historyIndex = state.requestHistory.length - 1;
+    
+    // Update the counter and buttons when history changes
+    if (typeof updateHistoryCounter === 'function') {
+        updateHistoryCounter();
+    }
+    
+    // Ensure history buttons are properly updated
+    if (typeof updateHistoryButtons === 'function') {
+        updateHistoryButtons();
+    }
 }

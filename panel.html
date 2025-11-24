@@ -20,14 +20,13 @@
                             <span class="regex-icon">.*</span>
                         </button>
                     </div>
-                    <button id="clear-all-btn" class="icon-btn" style="margin-left: 4px;">
+                    <button id="clear-all-btn" class="icon-btn">
                         <svg viewBox="0 0 24 24" width="14" height="14">
                             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
                                 fill="currentColor" />
                         </svg>
                     </button>
-                    <div class="divider-vertical"
-                        style="width: 1px; height: 20px; background: var(--border-color); margin: 0 4px;"></div>
+                    <div class="divider-vertical"></div>
                     <button id="settings-btn" class="icon-btn">
                         <svg viewBox="0 0 24 24" width="14" height="14">
                             <path
@@ -88,7 +87,7 @@
                                             d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"
                                             fill="currentColor" />
                                     </svg>
-                                    <span style="font-size: 10px; margin-left: 2px;">▼</span>
+                                    <span style="font-size: 10px;">▼</span>
                                 </button>
                                 <div id="ai-menu-dropdown" class="dropdown-content">
                                     <div class="dropdown-item" id="explain-btn">
@@ -105,8 +104,7 @@
                                     <path d="M7 2v11h3v9l7-12h-4l4-8z" fill="currentColor" />
                                 </svg>
                             </button>
-                            <div class="divider-vertical"
-                                style="width: 1px; height: 20px; background: var(--border-color); margin: 0 4px;"></div>
+                            <div class="divider-vertical"></div>
                             <div class="history-nav">
                                 <button id="history-back" class="icon-btn" title="Previous request" disabled>
                                     <svg viewBox="0 0 24 24" width="16" height="16">
@@ -114,6 +112,7 @@
                                             fill="currentColor" />
                                     </svg>
                                 </button>
+                                <div id="history-counter" class="history-counter" title="History position">0/0</div>
                                 <button id="history-fwd" class="icon-btn" title="Next request" disabled>
                                     <svg viewBox="0 0 24 24" width="16" height="16">
                                         <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"
@@ -174,8 +173,7 @@
                                         fill="currentColor" />
                                 </svg>
                             </button>
-                            <div class="divider-vertical"
-                                style="width: 1px; height: 20px; background: var(--border-color); margin: 0 4px;"></div>
+                            <div class="divider-vertical"></div>
                             <button id="theme-toggle-btn" class="icon-btn" title="Toggle Theme">
                                 <svg viewBox="0 0 24 24" width="14" height="14">
                                     <path
@@ -205,6 +203,11 @@
                             <div id="bulk-progress-bar" class="progress-bar"></div>
                             <span id="bulk-progress-text">0/0</span>
                         </div>
+                        <button id="bulk-export-btn" class="icon-btn" title="Export Bulk Results (CSV)">
+                            <svg viewBox="0 0 24 24" width="16" height="16">
+                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor" />
+                            </svg>
+                        </button>
                         <button id="bulk-stop-btn" class="icon-btn" title="Pause Attack">
                             <svg viewBox="0 0 24 24" width="16" height="16">
                                 <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" fill="currentColor" />
@@ -228,6 +231,7 @@
                                     <th>Payload</th>
                                     <th>Status</th>
                                     <th>Size</th>
+                                    <th>Diff</th>
                                     <th>Time</th>
                                 </tr>
                             </thead>
@@ -276,131 +280,126 @@
     </div>
 
     <!-- Bulk Replay Configuration Modal -->
-    <div id="bulk-config-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Bulk Replay Configuration</h3>
-                <button class="close-modal">&times;</button>
+    <div id="bulk-config-modal" popover>
+        <div class="modal-header">
+            <h3>Bulk Replay Configuration</h3>
+            <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label style="font-size: 13px; font-weight: 500; margin-bottom: 8px;">Payload Positions Found:
+                <span id="payload-count" style="font-weight: 600;color: var(--accent-color);">0</span></label>
+            <!-- Attack Type Selection -->
+            <div class="form-group" style="padding-top: 10px">
+                <label>Attack Type</label>
+                <select id="attack-type" class="form-control">
+                    <option value="sniper">Sniper - One position at a time</option>
+                    <option value="battering-ram">Battering Ram - Same payload for all positions</option>
+                    <option value="pitchfork">Pitchfork - Zip payloads across positions</option>
+                    <option value="cluster-bomb">Cluster Bomb - All combinations</option>
+                </select>
+                <p class="help-text" id="attack-type-help">Sniper: Tests each position independently with its own
+                    payloads.</p>
             </div>
-            <div class="modal-body">
-                <!-- Attack Type Selection -->
+
+            <!-- Payload Positions -->
+            <div class="form-group">
+                <div id="positions-container">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+            <!-- Battering Ram: Single Shared Payload -->
+            <div id="battering-ram-config" style="display: none;">
                 <div class="form-group">
-                    <label>Attack Type</label>
-                    <select id="attack-type" class="form-control">
-                        <option value="sniper">Sniper - One position at a time</option>
-                        <option value="battering-ram">Battering Ram - Same payload for all positions</option>
-                        <option value="pitchfork">Pitchfork - Zip payloads across positions</option>
-                        <option value="cluster-bomb">Cluster Bomb - All combinations</option>
+                    <label>Shared Payload Configuration</label>
+                    <select class="payload-type-select form-control">
+                        <option value="simple-list">Simple List</option>
+                        <option value="numbers">Numbers</option>
                     </select>
-                    <p class="help-text" id="attack-type-help">Sniper: Tests each position independently with its own
-                        payloads.</p>
                 </div>
 
-                <!-- Payload Positions -->
-                <div class="form-group">
-                    <label>Payload Positions Found: <span id="payload-count">0</span></label>
-                    <div id="positions-container">
-                        <!-- Populated via JS -->
-                    </div>
-                </div>
-
-                <!-- Battering Ram: Single Shared Payload -->
-                <div id="battering-ram-config" style="display: none;">
+                <div class="payload-options-simple-list">
                     <div class="form-group">
-                        <label>Shared Payload Configuration</label>
-                        <select class="payload-type-select form-control">
-                            <option value="simple-list">Simple List</option>
-                            <option value="numbers">Numbers</option>
-                        </select>
+                        <label>Payloads (one per line)</label>
+                        <textarea class="payload-list-input form-control" rows="5"
+                            placeholder="admin&#10;user&#10;guest"></textarea>
                     </div>
+                </div>
 
-                    <div class="payload-options-simple-list">
+                <div class="payload-options-numbers" style="display: none;">
+                    <div class="form-row">
                         <div class="form-group">
-                            <label>Payloads (one per line)</label>
-                            <textarea class="payload-list-input form-control" rows="8"
-                                placeholder="admin&#10;user&#10;guest"></textarea>
+                            <label>From</label>
+                            <input type="number" class="num-from-input form-control" value="1">
                         </div>
-                    </div>
-
-                    <div class="payload-options-numbers" style="display: none;">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>From</label>
-                                <input type="number" class="num-from-input form-control" value="1">
-                            </div>
-                            <div class="form-group">
-                                <label>To</label>
-                                <input type="number" class="num-to-input form-control" value="100">
-                            </div>
-                            <div class="form-group">
-                                <label>Step</label>
-                                <input type="number" class="num-step-input form-control" value="1">
-                            </div>
+                        <div class="form-group">
+                            <label>To</label>
+                            <input type="number" class="num-to-input form-control" value="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Step</label>
+                            <input type="number" class="num-step-input form-control" value="1">
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button id="start-attack-btn" class="primary-btn">Start Attack</button>
-            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="start-attack-btn" class="primary-btn">Start Attack</button>
         </div>
     </div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Settings</h3>
-                <button class="close-modal">&times;</button>
+    <div id="settings-modal" popover>
+        <div class="modal-header">
+            <h3>Settings</h3>
+            <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="anthropic-api-key">Anthropic API Key</label>
+                <input type="password" id="anthropic-api-key" class="form-control" placeholder="sk-ant-...">
+                <p class="help-text">Required for "Explain Request" feature. Stored locally.</p>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="anthropic-api-key">Anthropic API Key</label>
-                    <input type="password" id="anthropic-api-key" class="form-control" placeholder="sk-ant-...">
-                    <p class="help-text">Required for "Explain Request" feature. Stored locally.</p>
-                </div>
-                <div class="form-group">
-                    <label for="anthropic-model">Model</label>
-                    <select id="anthropic-model" class="form-control">
-                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Oct 2024)</option>
-                        <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet (Jun 2024)</option>
-                        <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                    </select>
-                </div>
+            <div class="form-group">
+                <label for="anthropic-model">Model</label>
+                <select id="anthropic-model" class="form-control">
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Oct 2024)</option>
+                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet (Jun 2024)</option>
+                    <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                    <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                </select>
             </div>
-            <div class="modal-footer">
-                <button id="save-settings-btn" class="primary-btn">Save</button>
-            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="save-settings-btn" class="primary-btn">Save</button>
         </div>
     </div>
 
     <!-- Explanation Modal -->
-    <div id="explanation-modal" class="modal">
-        <div class="modal-content" style="width: 700px; max-width: 90vw;">
-            <div class="modal-header">
-                <h3>Request Explanation</h3>
-                <button class="close-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="explanation-content" class="markdown-body" style="line-height: 1.6; font-size: 14px;">
-                    <!-- Content populated by JS -->
-                    <div class="loading-spinner">Generating explanation...</div>
-                </div>
+    <div id="explanation-modal" popover style="width: 700px; max-width: 90vw;">
+        <div class="modal-header">
+            <h3>Request Explanation</h3>
+            <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="explanation-content" class="markdown-body" style="line-height: 1.6; font-size: 14px;">
+                <!-- Content populated by JS -->
+                <div class="loading-spinner">Generating explanation...</div>
             </div>
         </div>
     </div>
 
     <!-- Secrets Modal -->
-    <div id="secrets-modal" class="modal">
+    <div id="secrets-modal" popover>
         <div class="modal-content" style="width: 800px; max-width: 95vw;">
             <div class="modal-header">
                 <h3>Secrets Found</h3>
                 <div id="secrets-search-container" style="flex: 1; margin: 0 20px; display: none;">
-                    <input type="text" id="secrets-search" class="search-input" placeholder="Search secrets..."
+                    <input type="text" id="secrets-search" class="search-input form-control" placeholder="Search secrets..."
                         style="width: 100%;">
                 </div>
-                <button class="close-modal">&times;</button>
+                <button class="close-modal" popovertarget="secrets-modal" popovertargetaction="hide">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="secrets-progress" style="display: none; margin-bottom: 15px;">

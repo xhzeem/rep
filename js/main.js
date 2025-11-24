@@ -8,8 +8,18 @@ import {
 import { setupNetworkListener, parseRequest, executeRequest } from './modules/network.js';
 import { getAISettings, saveAISettings, streamExplanationFromClaude } from './modules/ai.js';
 import { setupBulkReplay } from './modules/bulk-replay.js';
+import { formatBytes, highlightHTTP, renderDiff, copyToClipboard } from './modules/utils.js';
 import { scanForSecrets } from './modules/secret-scanner.js';
-import { formatBytes, highlightHTTP, renderDiff, copyToClipboard, escapeHtml } from './modules/utils.js';
+
+// Update history counter display
+export function updateHistoryCounter() {
+    const counter = document.getElementById('history-counter');
+    if (state.requestHistory && state.requestHistory.length > 0) {
+        counter.textContent = `${state.historyIndex + 1}/${state.requestHistory.length}`;
+    } else {
+        counter.textContent = '0/0';
+    }
+}
 
 // Theme Detection
 function updateTheme() {
@@ -33,6 +43,13 @@ function updateTheme() {
         }
     }
     updateThemeIcon();
+}
+
+function beautifyHeaderName(name) {
+    return (name || '')
+        .split('-')
+        .map(part => part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part)
+        .join('-');
 }
 
 function updateThemeIcon() {
@@ -86,6 +103,20 @@ document.addEventListener('DOMContentLoaded', () => {
     setupUndoRedo();
     setupBulkReplay();
 
+    // Disable Send when request editor is empty
+    const updateSendBtnState = () => {
+        const hasContent = (elements.rawRequestInput.innerText || '').trim().length > 0;
+        elements.sendBtn.disabled = !hasContent;
+    };
+    updateSendBtnState();
+    if (elements.rawRequestInput) {
+        elements.rawRequestInput.addEventListener('input', updateSendBtnState);
+        elements.rawRequestInput.addEventListener('keyup', updateSendBtnState);
+        elements.rawRequestInput.addEventListener('click', updateSendBtnState);
+        const sendObserver = new MutationObserver(updateSendBtnState);
+        sendObserver.observe(elements.rawRequestInput, { childList: true, subtree: true, characterData: true });
+    }
+
     // Event Listeners
 
     // Send Request
@@ -133,13 +164,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // History Navigation
+    elements.historyBackBtn = document.getElementById('history-back');
+    elements.historyFwdBtn = document.getElementById('history-fwd');
+
     elements.historyBackBtn.addEventListener('click', () => {
         if (state.historyIndex > 0) {
             state.historyIndex--;
             const item = state.requestHistory[state.historyIndex];
-            elements.rawRequestInput.innerText = item.rawText;
+            elements.rawRequestInput.innerHTML = highlightHTTP(item.rawText);
             elements.useHttpsCheckbox.checked = item.useHttps;
+            
+            // Restore response if it exists
+            if (item.response) {
+                elements.rawResponseDisplay.innerHTML = highlightHTTP(item.response);
+                elements.rawResponseDisplay.style.display = 'block';
+                elements.rawResponseDisplay.style.visibility = 'visible';
+            } else {
+                elements.rawResponseDisplay.textContent = '';
+            }
+            
             updateHistoryButtons();
+            updateHistoryCounter();
         }
     });
 
@@ -147,9 +192,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.historyIndex < state.requestHistory.length - 1) {
             state.historyIndex++;
             const item = state.requestHistory[state.historyIndex];
-            elements.rawRequestInput.innerText = item.rawText;
+            elements.rawRequestInput.innerHTML = highlightHTTP(item.rawText);
             elements.useHttpsCheckbox.checked = item.useHttps;
+            
+            // Restore response if it exists
+            if (item.response) {
+                elements.rawResponseDisplay.innerHTML = highlightHTTP(item.response);
+                elements.rawResponseDisplay.style.display = 'block';
+                elements.rawResponseDisplay.style.visibility = 'visible';
+            } else {
+                elements.rawResponseDisplay.textContent = '';
+            }
+            
             updateHistoryButtons();
+            updateHistoryCounter();
         }
     });
 
@@ -178,6 +234,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // AI Features
+    setupAIFeatures();
+    
     // Secret Scanner
     const scanSecretsBtn = document.getElementById('scan-secrets-btn');
     const secretsModal = document.getElementById('secrets-modal');
@@ -187,15 +246,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const secretsProgressText = document.getElementById('secrets-progress-text');
     const secretsSearch = document.getElementById('secrets-search');
     const secretsSearchContainer = document.getElementById('secrets-search-container');
-
+    
     let currentSecretResults = [];
-
+    
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+    
     function renderSecretResults(results) {
         if (results.length === 0) {
             secretsResults.innerHTML = '<div class="empty-state">No secrets found matching your criteria.</div>';
             return;
         }
-
+        
         let html = '<table class="secrets-table"><thead><tr><th>Type</th><th>Match</th><th>Confidence</th><th>File</th></tr></thead><tbody>';
         results.forEach(r => {
             const confidenceClass = r.confidence >= 80 ? 'high' : (r.confidence >= 50 ? 'medium' : 'low');
@@ -209,52 +279,51 @@ document.addEventListener('DOMContentLoaded', () => {
         html += '</tbody></table>';
         secretsResults.innerHTML = html;
     }
-
+    
     if (scanSecretsBtn) {
         scanSecretsBtn.addEventListener('click', async () => {
-            secretsModal.style.display = 'block';
+            secretsModal.showPopover();
             secretsResults.innerHTML = '';
             secretsProgress.style.display = 'block';
             secretsProgressBar.style.setProperty('--progress', '0%');
             secretsProgressText.textContent = 'Scanning JS files...';
             if (secretsSearch) secretsSearch.value = ''; // Reset search
             if (secretsSearchContainer) secretsSearchContainer.style.display = 'none';
-
+            
             currentSecretResults = await scanForSecrets(state.requests, (processed, total) => {
                 const percent = Math.round((processed / total) * 100);
                 secretsProgressBar.style.setProperty('--progress', `${percent}%`);
                 secretsProgressText.textContent = `Scanning JS files... ${processed}/${total}`;
             });
-
+            
             secretsProgress.style.display = 'none';
             if (secretsSearchContainer) secretsSearchContainer.style.display = 'block';
             renderSecretResults(currentSecretResults);
         });
     }
-
+    
+    // Close modal is now handled by the popover API with popovertarget attribute
+    
+    // Search functionality
     if (secretsSearch) {
         secretsSearch.addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            const filtered = currentSecretResults.filter(r =>
-                r.type.toLowerCase().includes(term) ||
-                r.match.toLowerCase().includes(term) ||
-                r.file.toLowerCase().includes(term)
+            const query = e.target.value.toLowerCase();
+            const filtered = currentSecretResults.filter(r => 
+                r.type.toLowerCase().includes(query) || 
+                r.match.toLowerCase().includes(query) || 
+                r.file.toLowerCase().includes(query)
             );
             renderSecretResults(filtered);
         });
     }
-
-    // AI Features
-    setupAIFeatures();
 });
 
 async function handleSendRequest() {
     const rawContent = elements.rawRequestInput.innerText;
     const useHttps = elements.useHttpsCheckbox.checked;
 
-    // Add to history
-    addToHistory(rawContent, useHttps);
-    updateHistoryButtons();
+    // Re-highlight the request editor to reflect any user edits before send
+    elements.rawRequestInput.innerHTML = highlightHTTP(rawContent);
 
     try {
         const { url, options, method, filteredHeaders, bodyText } = parseRequest(rawContent, useHttps);
@@ -281,7 +350,8 @@ async function handleSendRequest() {
         // Build raw HTTP response
         let rawResponse = `HTTP/1.1 ${result.status} ${result.statusText}\n`;
         for (const [key, value] of result.headers) {
-            rawResponse += `${key}: ${value}\n`;
+            const niceKey = beautifyHeaderName(key);
+            rawResponse += `${niceKey}: ${value}\n`;
         }
         rawResponse += '\n';
 
@@ -294,6 +364,37 @@ async function handleSendRequest() {
 
         // Store current response
         state.currentResponse = rawResponse;
+        
+        // Always create a new history entry for the response
+        // This ensures we keep all responses, even for identical requests
+        const currentText = elements.rawRequestInput.innerText;
+        const currentHttps = elements.useHttpsCheckbox.checked;
+        
+        // Only add to history if we have a response
+        if (rawResponse) {
+            addToHistory(currentText, currentHttps, rawResponse);
+            
+            // Update the selected request's history if it exists
+            if (state.selectedRequest) {
+                if (!state.selectedRequest._history) {
+                    state.selectedRequest._history = [];
+                }
+                
+                // Add to the selected request's history if it's not already there
+                const lastHistory = state.selectedRequest._history[state.selectedRequest._history.length - 1];
+                if (!lastHistory || lastHistory.rawText !== currentText || lastHistory.response !== rawResponse) {
+                    state.selectedRequest._history.push({
+                        rawText: currentText,
+                        useHttps: currentHttps,
+                        response: rawResponse
+                    });
+                    state.selectedRequest._historyIndex = state.selectedRequest._history.length - 1;
+                }
+                
+                // Update the history counter after adding the new entry
+                updateHistoryCounter();
+            }
+        }
 
         // Handle Diff Baseline
         if (!state.regularRequestBaseline) {
@@ -316,6 +417,23 @@ async function handleSendRequest() {
         elements.rawResponseDisplay.style.display = 'block';
         elements.rawResponseDisplay.style.visibility = 'visible';
 
+        // Mark selected request as sent (for left pane highlighting)
+        if (state.selectedRequest) {
+            state.selectedRequest.sent = true;
+            const idx = state.requests.indexOf(state.selectedRequest);
+            const item = elements.requestList.querySelector(`.request-item[data-index="${idx}"]`);
+            if (item) item.classList.add('sent');
+            
+            // Update the history counter after sending a request
+            if (typeof updateHistoryCounter === 'function') {
+                updateHistoryCounter();
+            }
+        }
+
+        // Re-highlight request editor after send completes
+        const postSendContent = elements.rawRequestInput.innerText;
+        elements.rawRequestInput.innerHTML = highlightHTTP(postSendContent);
+
     } catch (err) {
         console.error('Request Failed:', err);
         elements.resStatus.textContent = 'Error';
@@ -323,6 +441,18 @@ async function handleSendRequest() {
         elements.resTime.textContent = '0ms';
         elements.rawResponseDisplay.textContent = `Error: ${err.message}\n\nStack: ${err.stack}`;
         elements.rawResponseDisplay.style.display = 'block';
+
+        // Mark selected request as sent even on error (attempted)
+        if (state.selectedRequest) {
+            state.selectedRequest.sent = true;
+            const idx = state.requests.indexOf(state.selectedRequest);
+            const item = elements.requestList.querySelector(`.request-item[data-index="${idx}"]`);
+            if (item) item.classList.add('sent');
+        }
+
+        // Ensure request editor stays highlighted even on error
+        const postErrorContent = elements.rawRequestInput.innerText;
+        elements.rawRequestInput.innerHTML = highlightHTTP(postErrorContent);
     }
 }
 
@@ -346,7 +476,7 @@ function setupAIFeatures() {
             anthropicApiKeyInput.value = apiKey;
             if (anthropicModelSelect) anthropicModelSelect.value = model;
 
-            settingsModal.style.display = 'block';
+            settingsModal.showPopover();
         });
     }
 
@@ -360,7 +490,7 @@ function setupAIFeatures() {
             }
 
             alert('Settings saved!');
-            settingsModal.style.display = 'none';
+            settingsModal.hidePopover();
         });
     }
 
@@ -380,11 +510,11 @@ function setupAIFeatures() {
         const { apiKey, model } = getAISettings();
         if (!apiKey) {
             alert('Please configure your Anthropic API Key in Settings first.');
-            settingsModal.style.display = 'block';
+            settingsModal.showPopover();
             return;
         }
 
-        explanationModal.style.display = 'block';
+        explanationModal.showPopover();
         explanationContent.innerHTML = '<div class="loading-spinner">Generating...</div>';
 
         try {
@@ -435,17 +565,11 @@ function setupAIFeatures() {
         });
     }
 
-    // Close Modals
+    // Close Popovers
     document.querySelectorAll('.close-modal').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const modal = e.target.closest('.modal');
-            if (modal) modal.style.display = 'none';
+            const popover = e.target.closest('[popover]');
+            if (popover) popover.hidePopover();
         });
-    });
-
-    window.addEventListener('click', (e) => {
-        if (e.target.classList.contains('modal')) {
-            e.target.style.display = 'none';
-        }
     });
 }
