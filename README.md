@@ -144,8 +144,8 @@ If **rep+ saved you time** during testing, development, or bug bounty work, plea
   <a href="https://github.com/sponsors/bscript">
     <img src="https://img.shields.io/badge/Become%20a%20Sponsor-%F0%9F%92%96-ea4aaa?style=for-the-badge" alt="Become a Sponsor"/>
   </a>
+  <a href="https://github.com/user-attachments/assets/8e6933b5-8579-480b-99cf-161a392b4153">
+    <img src="https://img.shields.io/badge/Bitcoin%20Sponsor-₿-f7931a?style=for-the-badge&logo=bitcoin&logoColor=white" alt="Bitcoin Sponsor"/>
+  </a>
 </p>
-
-
-
 
