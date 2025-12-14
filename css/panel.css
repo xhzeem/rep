@@ -984,6 +984,7 @@ tr.selected {
     justify-content: space-between;
     align-items: center;
     min-height: 48px;
+    flex-wrap: wrap;
 }
 
 .pane-header h3 {
@@ -1000,6 +1001,7 @@ tr.selected {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .history-nav {
