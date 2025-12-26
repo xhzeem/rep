@@ -14,7 +14,7 @@
   </a>
 
    <!-- Discord -->
-  <a href="https://github.com/repplus">
+  <a href="https://discord.gg/D25vDTXFUP">
         <img src="https://img.shields.io/discord/1442955541293961429.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2" alt="Discord">
   </a>
 
